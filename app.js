@@ -29,6 +29,7 @@ const elements = {
     datasetList: document.getElementById('dataset-list'),
     datasetPlaceholder: document.getElementById('dataset-placeholder'),
     codeBlock: document.getElementById('code-block'),
+    btnCopyCode: document.getElementById('btn-copy-code'),
     promptChips: document.querySelectorAll('.prompt-chip'),
     quickToolCards: document.querySelectorAll('.quick-tool-card'),
     
@@ -235,6 +236,7 @@ function clearStagedFile() {
     appState.pendingDataset = null;
     elements.btnSend.disabled = elements.promptInput.value.trim() === '';
 }
+window.clearStagedFile = clearStagedFile;
 
 // ----------------------------------------------------
 // Data Parsing utilities
@@ -243,12 +245,24 @@ function parseCSV(text) {
     const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     if (lines.length === 0) return null;
     
-    // Quick CSV header and row parse
-    const headers = lines[0].split(',').map(h => h.replace(/^["']|["']$/g, ''));
+    // Detect delimiter: check first line for , or ; or \t
+    const firstLine = lines[0];
+    let delimiter = ',';
+    const commas = (firstLine.match(/,/g) || []).length;
+    const semicolons = (firstLine.match(/;/g) || []).length;
+    const tabs = (firstLine.match(/\t/g) || []).length;
+    
+    if (semicolons > commas && semicolons > tabs) {
+        delimiter = ';';
+    } else if (tabs > commas && tabs > semicolons) {
+        delimiter = '\t';
+    }
+    
+    const headers = lines[0].split(delimiter).map(h => h.replace(/^["']|["']$/g, ''));
     const rows = [];
     
     for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.replace(/^["']|["']$/g, ''));
+        const values = lines[i].split(delimiter).map(v => v.replace(/^["']|["']$/g, ''));
         if (values.length === headers.length) {
             rows.push(values);
         }
