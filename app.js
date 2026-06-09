@@ -28,9 +28,16 @@ const elements = {
     datasetList: document.getElementById('dataset-list'),
     datasetPlaceholder: document.getElementById('dataset-placeholder'),
     codeBlock: document.getElementById('code-block'),
-    btnCopyCode: document.getElementById('btn-copy-code'),
     promptChips: document.querySelectorAll('.prompt-chip'),
-    quickToolCards: document.querySelectorAll('.quick-tool-card')
+    quickToolCards: document.querySelectorAll('.quick-tool-card'),
+    
+    // Mobile Elements
+    btnHamburger: document.getElementById('btn-hamburger'),
+    btnSidebarClose: document.getElementById('btn-sidebar-close'),
+    sidebarOverlay: document.getElementById('sidebar-overlay'),
+    btnToggleWorkspace: document.getElementById('btn-toggle-workspace'),
+    btnBackToChat: document.getElementById('btn-back-to-chat'),
+    sidebar: document.getElementById('sidebar')
 };
 
 // ----------------------------------------------------
@@ -44,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupWorkspaceMockActions();
     setupChatActions();
     setupSuggestedPrompts();
+    setupMobileToggles();
 });
 
 // ----------------------------------------------------
@@ -317,6 +325,9 @@ function commitDataset(dataset) {
     
     // Generate Python Code
     generateCode(dataset);
+
+    // Auto switch to workspace view on mobile
+    document.body.classList.add('show-workspace');
 }
 
 function unloadDataset() {
@@ -792,6 +803,9 @@ function simulateAISteps(promptText, fileToCommit) {
                         switchToTab('tab-charts');
                     }
                     
+                    // Auto switch to workspace view on mobile to show results
+                    document.body.classList.add('show-workspace');
+                    
                     scrollToBottom();
                 }, 1000);
             }, 1000);
@@ -1032,4 +1046,52 @@ function escapeHtml(string) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// ----------------------------------------------------
+// Mobile UI Handlers
+// ----------------------------------------------------
+function setupMobileToggles() {
+    // Open Sidebar drawer
+    if (elements.btnHamburger) {
+        elements.btnHamburger.addEventListener('click', () => {
+            document.body.classList.add('sidebar-open');
+        });
+    }
+
+    // Close Sidebar drawer
+    if (elements.btnSidebarClose) {
+        elements.btnSidebarClose.addEventListener('click', () => {
+            document.body.classList.remove('sidebar-open');
+        });
+    }
+
+    // Close Sidebar on backdrop click
+    if (elements.sidebarOverlay) {
+        elements.sidebarOverlay.addEventListener('click', () => {
+            document.body.classList.remove('sidebar-open');
+        });
+    }
+
+    // Open Workspace panel on mobile
+    if (elements.btnToggleWorkspace) {
+        elements.btnToggleWorkspace.addEventListener('click', () => {
+            document.body.classList.add('show-workspace');
+        });
+    }
+
+    // Return to Chat panel on mobile
+    if (elements.btnBackToChat) {
+        elements.btnBackToChat.addEventListener('click', () => {
+            document.body.classList.remove('show-workspace');
+        });
+    }
+
+    // Close sidebar drawer if a history item is clicked on mobile
+    const historyItems = document.querySelectorAll('.history-item');
+    historyItems.forEach(item => {
+        item.addEventListener('click', () => {
+            document.body.classList.remove('sidebar-open');
+        });
+    });
 }

@@ -999,33 +999,240 @@ main.main-content {
     margin-top: 4px;
 }
 
+/* Desktop defaults for mobile UI elements */
+.btn-hamburger {
+    display: none;
+}
+.btn-sidebar-close {
+    display: none;
+}
+.sidebar-overlay {
+    display: none;
+}
+.btn-toggle-workspace {
+    display: none;
+}
+.btn-back-to-chat {
+    display: none;
+}
+
 /* Responsive */
-@media (max-width: 1024px) {
-    body {
-        flex-direction: column;
-    }
-    aside.sidebar {
-        width: 100%;
-        height: auto;
-        border-right: none;
-        border-bottom: 1px solid var(--panel-border);
-    }
-    .logo-area {
-        padding: 16px 24px;
-    }
-    .sidebar-menu, .sidebar-footer {
-        display: none; /* Can be toggled with a hamburger menu in real use */
-    }
+@media (max-width: 768px) {
+    /* Layout structural changes */
     main.main-content {
-        flex-direction: column;
+        flex-direction: row;
+        width: 100vw;
+        height: 100%;
     }
+
+    /* Toggle Views */
     .chat-section {
+        display: flex;
+        width: 100%;
+        min-width: 100%;
         border-right: none;
-        border-bottom: 1px solid var(--panel-border);
-        height: 50vh;
-        min-width: 0;
     }
+    
     .workspace-section {
-        height: 50vh;
+        display: none;
+        width: 100%;
+        min-width: 100%;
+    }
+
+    /* Switch panel state */
+    body.show-workspace .chat-section {
+        display: none;
+    }
+    
+    body.show-workspace .workspace-section {
+        display: flex;
+    }
+
+    /* Sidebar drawer slide-in */
+    aside.sidebar {
+        position: fixed;
+        top: 0;
+        left: -280px;
+        width: 280px;
+        height: 100%;
+        z-index: 100;
+        transition: var(--transition-normal);
+        border-right: 1px solid var(--panel-border);
+        box-shadow: none;
+    }
+
+    body.sidebar-open aside.sidebar {
+        left: 0;
+        box-shadow: 5px 0 25px rgba(0, 0, 0, 0.7);
+    }
+
+    /* Close button in Sidebar */
+    .btn-sidebar-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        font-size: 28px;
+        cursor: pointer;
+        margin-left: auto;
+        padding: 4px;
+        line-height: 1;
+        transition: var(--transition-fast);
+    }
+    
+    .btn-sidebar-close:hover {
+        color: var(--error);
+    }
+
+    /* Sidebar Backdrop Overlay */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        z-index: 90;
+    }
+
+    body.sidebar-open .sidebar-overlay {
+        display: block;
+    }
+
+    /* Mobile Hamburger Menu */
+    .btn-hamburger {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: 1px solid var(--panel-border);
+        color: var(--text-primary);
+        width: 38px;
+        height: 38px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: var(--transition-fast);
+    }
+    
+    .btn-hamburger:hover {
+        border-color: var(--accent-color);
+        color: var(--accent-color);
+    }
+
+    /* Mobile View Toggle Buttons */
+    .btn-toggle-workspace {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(255, 204, 0, 0.08);
+        border: 1px solid var(--accent-color);
+        color: var(--accent-color);
+        padding: 6px 12px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        font-weight: 600;
+        font-family: var(--font-sans);
+        cursor: pointer;
+        transition: var(--transition-fast);
+        margin-left: auto;
+    }
+    
+    .btn-toggle-workspace:hover {
+        background: var(--accent-color);
+        color: var(--text-dark);
+        box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    .btn-back-to-chat {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: transparent;
+        border: 1px solid rgba(255, 204, 0, 0.2);
+        color: var(--accent-color);
+        padding: 6px 12px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--transition-fast);
+        margin-right: 12px;
+    }
+    
+    .btn-back-to-chat:hover {
+        border-color: var(--accent-color);
+        background: rgba(255, 204, 0, 0.05);
+    }
+
+    /* Chat header styling adjustments */
+    .chat-header {
+        padding: 0 16px;
+        gap: 12px;
+    }
+    
+    .chat-header-info {
+        flex: 1;
+        overflow: hidden;
+    }
+    
+    .chat-bot-title {
+        font-size: 15px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .chat-header-actions {
+        display: none; /* Hide export/clear in header on mobile to avoid overcrowding */
+    }
+
+    /* Messages streams styling */
+    .messages-container {
+        padding: 16px;
+    }
+    
+    .message-wrapper {
+        max-width: 90%;
+    }
+
+    /* Workspace header adjustment */
+    .workspace-header {
+        padding: 0 16px;
+        gap: 8px;
+    }
+    
+    .workspace-tabs {
+        overflow-x: auto;
+        padding-bottom: 2px;
+        width: 100%;
+        mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+    }
+    
+    .tab-btn {
+        padding: 8px 12px;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+    
+    .workspace-actions {
+        display: none; /* Hide maximize window action on mobile */
+    }
+
+    .tab-content {
+        padding: 16px;
+    }
+
+    /* Inputs on mobile */
+    .input-section {
+        padding: 12px 16px;
+    }
+    
+    .prompt-box {
+        border-radius: var(--radius-md);
     }
 }
