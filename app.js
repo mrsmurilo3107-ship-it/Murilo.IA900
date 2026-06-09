@@ -3,7 +3,8 @@ let appState = {
     activeTab: 'tab-table',
     loadedDataset: null,
     chartInstance: null,
-    messages: []
+    // Conversation history for Azure OpenAI context
+    conversationHistory: []
 };
 
 // UI Elements
@@ -671,13 +672,21 @@ function handleSendPrompt() {
     addUserMessageToChat(promptText, stagedFile);
 
     // 2. Clear staging state & input
+    const committedFile = stagedFile;
     clearStagedFile();
     elements.promptInput.value = '';
     elements.promptInput.style.height = 'auto';
     elements.btnSend.disabled = true;
 
-    // 3. Trigger AI Cognitive Process & reply
-    simulateAISteps(promptText, stagedFile);
+    // 3. Add user message to conversation history
+    let userContent = promptText || 'Carregando arquivo de dados para análise.';
+    if (committedFile) {
+        userContent = `${userContent}\n\n[Arquivo: ${committedFile.name} | Colunas: ${committedFile.headers.join(', ')} | Linhas: ${committedFile.rows.length}]`;
+    }
+    appState.conversationHistory.push({ role: 'user', content: userContent });
+
+    // 4. Trigger AI processing animation + real Azure call
+    runAzureAISteps(promptText, committedFile);
 }
 
 function addUserMessageToChat(text, file) {
@@ -719,14 +728,18 @@ function addSystemMessageToChat(text, isError = false) {
     scrollToBottom();
 }
 
-function simulateAISteps(promptText, fileToCommit) {
-    const isEda = promptText.toLowerCase().includes('eda') || promptText.toLowerCase().includes('exploratória');
+// ----------------------------------------------------
+// Azure OpenAI Real Integration
+// ----------------------------------------------------
+async function runAzureAISteps(promptText, fileToCommit) {
+    const isEda = promptText.toLowerCase().includes('eda') || promptText.toLowerCase().includes('exploratória') || promptText.toLowerCase().includes('exploratoria');
     const isClean = promptText.toLowerCase().includes('limpar') || promptText.toLowerCase().includes('nulo') || promptText.toLowerCase().includes('limpeza');
-    const isCorrelation = promptText.toLowerCase().includes('correlação') || promptText.toLowerCase().includes('correl');
-    
-    // Create unique ID for this response step container
+    const isCorrelation = promptText.toLowerCase().includes('correlação') || promptText.toLowerCase().includes('correlacao') || promptText.toLowerCase().includes('correl');
+
     const stepContainerId = 'steps-' + Date.now();
-    
+    const spinnerSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>`;
+
+    // Inject the animated message bubble
     const messageHtml = `
         <div class="message-wrapper assistant">
             <div class="msg-avatar">DS</div>
@@ -734,7 +747,7 @@ function simulateAISteps(promptText, fileToCommit) {
                 <p><strong>Processando Solicitação de Análise</strong></p>
                 <div class="analysis-steps" id="${stepContainerId}">
                     <div class="analysis-step running" id="${stepContainerId}-1">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+                        ${spinnerSvg}
                         <span>Carregando e validando estrutura de dados...</span>
                     </div>
                 </div>
@@ -742,75 +755,145 @@ function simulateAISteps(promptText, fileToCommit) {
             </div>
         </div>
     `;
-    
     elements.messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
     scrollToBottom();
 
-    // Chronological execution simulation
     const container = document.getElementById(stepContainerId);
-    
-    setTimeout(() => {
-        // Step 1 Completed
-        markStepCompleted(stepContainerId + '-1');
-        
-        // Add Step 2
-        addAnalysisStep(container, stepContainerId + '-2', 'Processando cálculos estatísticos e correlações...');
-        
-        // If file needs to be committed, let's load it on the screen right here to make it feel fast and responsive!
-        if (fileToCommit) {
-            commitDataset(fileToCommit);
-        } else if (!appState.loadedDataset) {
-            // Auto load sample dataset if none exists, as a default action
-            loadSampleSilent();
+
+    // --- STEP 1: Commit dataset if provided (instant) ---
+    if (fileToCommit) {
+        commitDataset(fileToCommit);
+    } else if (!appState.loadedDataset) {
+        loadSampleSilent();
+    }
+
+    await delay(600);
+    markStepCompleted(stepContainerId + '-1');
+    addAnalysisStep(container, stepContainerId + '-2', 'Consultando o modelo Azure OpenAI (gpt-4.1)...');
+    scrollToBottom();
+
+    // --- STEP 2: Fire the real Azure OpenAI request in parallel ---
+    // Build a compact dataset context summary string for the system prompt
+    let datasetContext = null;
+    if (appState.loadedDataset) {
+        const ds = appState.loadedDataset;
+        const sampleRows = ds.rows.slice(0, 5).map(r => r.join(', ')).join('\n');
+        datasetContext = `Nome: ${ds.name}\nColunas (${ds.headers.length}): ${ds.headers.join(', ')}\nLinhas totais: ${ds.rows.length}\nPrimeiras 5 linhas:\n${sampleRows}`;
+    }
+
+    const azurePromise = callAzureOpenAI(appState.conversationHistory, datasetContext);
+
+    await delay(900);
+    markStepCompleted(stepContainerId + '-2');
+    addAnalysisStep(container, stepContainerId + '-3', 'Renderizando visualizações interativas...');
+    scrollToBottom();
+
+    // Re-render chart based on prompt context
+    if (appState.loadedDataset) {
+        if (isCorrelation) {
+            generateCorrelationHeatmapMock();
+        } else if (isClean) {
+            generateCleanScatterMock();
+        } else {
+            generateChart(appState.loadedDataset);
+        }
+    }
+
+    await delay(700);
+    markStepCompleted(stepContainerId + '-3');
+    addAnalysisStep(container, stepContainerId + '-4', 'Recebendo resposta do modelo...');
+    scrollToBottom();
+
+    // --- STEP 3: Await the real Azure response ---
+    const azureResult = await azurePromise;
+
+    markStepCompleted(stepContainerId + '-4');
+
+    const textBox = document.getElementById(stepContainerId + '-text');
+    const responseText = azureResult.reply || azureResult.error || 'Sem resposta do modelo.';
+
+    // Add assistant message to conversation history
+    if (azureResult.reply) {
+        appState.conversationHistory.push({ role: 'assistant', content: azureResult.reply });
+    }
+
+    // Render the Markdown-like response from the model
+    textBox.innerHTML = renderMarkdown(responseText);
+    textBox.classList.remove('hidden');
+
+    // Optionally switch tabs based on keywords in the real response
+    const replyLower = responseText.toLowerCase();
+    if (isCorrelation || isClean || isEda || replyLower.includes('gráfico') || replyLower.includes('grafico')) {
+        switchToTab('tab-charts');
+    } else if (replyLower.includes('código') || replyLower.includes('python') || replyLower.includes('import pandas')) {
+        switchToTab('tab-code');
+    }
+
+    // Auto-generate Python code if the response contains code
+    if (appState.loadedDataset) {
+        generateCode(appState.loadedDataset);
+    }
+
+    // Auto switch to workspace view on mobile
+    document.body.classList.add('show-workspace');
+    scrollToBottom();
+}
+
+// Helper: delay utility
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Helper: call the Vercel serverless proxy to Azure OpenAI
+async function callAzureOpenAI(messages, datasetContext) {
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages,
+                datasetContext,
+                temperature: 0.7,
+                top_p: 0.95
+            })
+        });
+
+        if (!res.ok) {
+            const errData = await res.json();
+            return { error: `Erro da API (${res.status}): ${errData.error || 'Falha desconhecida'}` };
         }
 
-        setTimeout(() => {
-            // Step 2 Completed
-            markStepCompleted(stepContainerId + '-2');
-            
-            // Add Step 3
-            addAnalysisStep(container, stepContainerId + '-3', 'Renderizando visualizações interativas...');
-            
-            // Re-render chart based on selected prompt query context
-            if (appState.loadedDataset) {
-                if (isCorrelation) {
-                    generateCorrelationHeatmapMock();
-                } else if (isClean) {
-                    generateCleanScatterMock();
-                } else {
-                    generateChart(appState.loadedDataset);
-                }
-            }
+        return await res.json();
+    } catch (err) {
+        return { error: `Erro de conexão: ${err.message}` };
+    }
+}
 
-            setTimeout(() => {
-                // Step 3 Completed
-                markStepCompleted(stepContainerId + '-3');
-                
-                // Add Step 4
-                addAnalysisStep(container, stepContainerId + '-4', 'Montando script Python do pipeline...');
-                
-                setTimeout(() => {
-                    // Step 4 Completed
-                    markStepCompleted(stepContainerId + '-4');
-                    
-                    // Show final analysis text answer
-                    const textBox = document.getElementById(stepContainerId + '-text');
-                    textBox.innerHTML = getSimulatedTextResponse(promptText, isEda, isClean, isCorrelation);
-                    textBox.classList.remove('hidden');
-                    
-                    // Automatically focus/switch to the relevant workspace tab
-                    if (isCorrelation || isClean || isEda) {
-                        switchToTab('tab-charts');
-                    }
-                    
-                    // Auto switch to workspace view on mobile to show results
-                    document.body.classList.add('show-workspace');
-                    
-                    scrollToBottom();
-                }, 1000);
-            }, 1000);
-        }, 1200);
-    }, 800);
+// Helper: minimal Markdown renderer (bold, italics, code, bullets, newlines)
+function renderMarkdown(text) {
+    if (!text) return '';
+    let html = escapeHtml(text)
+        // Code blocks ```lang\n...\n```
+        .replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => `<pre style="background:rgba(0,0,0,0.3);padding:12px;border-radius:8px;overflow-x:auto;margin:8px 0;"><code style="font-family:var(--font-mono);font-size:12px;color:#a7f3d0;white-space:pre;">${code.trim()}</code></pre>`)
+        // Inline code `..`
+        .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.08);padding:2px 5px;border-radius:4px;font-family:var(--font-mono);font-size:12px;color:#ffcc00;">$1</code>')
+        // Bold **...**
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        // Italic *...*
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        // Bullet - ...
+        .replace(/^[-•] (.+)$/gm, '<li style="margin-left:16px;margin-bottom:4px;">$1</li>')
+        // Numbered list 1. ...
+        .replace(/^\d+\. (.+)$/gm, '<li style="margin-left:16px;margin-bottom:4px;">$1</li>')
+        // Wrap consecutive <li> in <ul>
+        .replace(/((<li[^>]*>.*<\/li>\n?)+)/g, '<ul style="margin:8px 0;">$1</ul>')
+        // Headers ### ...
+        .replace(/^### (.+)$/gm, '<h4 style="color:var(--accent-color);margin:12px 0 4px;">$1</h4>')
+        .replace(/^## (.+)$/gm, '<h3 style="color:var(--accent-color);margin:12px 0 6px;">$1</h3>')
+        // Newlines → paragraphs
+        .replace(/\n\n+/g, '</p><p style="margin-top:10px;">')
+        .replace(/\n/g, '<br>');
+    return `<p>${html}</p>`;
 }
 
 function addAnalysisStep(container, id, text) {
@@ -836,56 +919,7 @@ function markStepCompleted(stepId) {
     }
 }
 
-function getSimulatedTextResponse(promptText, isEda, isClean, isCorrelation) {
-    const datasetName = appState.loadedDataset ? appState.loadedDataset.name : 'sample_data.csv';
-    
-    if (isCorrelation) {
-        return `
-            <p>Concluí o cálculo das correlações para o dataset <code>${datasetName}</code>. Identifiquei uma forte relação linear positiva entre as variáveis:</p>
-            <ul>
-                <li><strong>Investimento em Marketing (AdSpend) e Vendas (Sales):</strong> correlação de <strong>0.98</strong>. Isso sugere que o investimento é altamente preditivo do faturamento.</li>
-                <li><strong>Clicks e Vendas:</strong> correlação de <strong>0.97</strong>.</li>
-                <li><strong>Clicks e ConversionRate:</strong> correlação moderada de <strong>0.72</strong>.</li>
-            </ul>
-            <p>O gráfico térmico (Heatmap) foi renderizado na aba <strong>Gráficos</strong>. Você também pode copiar o script Python gerado na aba correspondente para reproduzir essa correlação localmente.</p>
-        `;
-    }
-    
-    if (isClean) {
-        return `
-            <p>Executei a rotina de auditoria de qualidade nos dados de <code>${datasetName}</code>. O dataset está saudável:</p>
-            <ul>
-                <li><strong>Valores nulos/ausentes:</strong> 0 encontrados em todas as colunas.</li>
-                <li><strong>Valores duplicados:</strong> Nenhuma linha duplicada foi detectada.</li>
-                <li><strong>Outliers:</strong> Encontrei 1 registro no dia 07 de Maio com vendas acima da média esperada (24.000 USD), porém condizente com o aumento de Marketing aplicado.</li>
-            </ul>
-            <p>O pipeline de limpeza foi estruturado no código Python à direita. Nenhuma remoção foi necessária pois a base está com integridade de 100%.</p>
-        `;
-    }
-    
-    if (isEda) {
-        return `
-            <p>Gerei a análise exploratória básica (EDA) para o dataset <code>${datasetName}</code>:</p>
-            <ul>
-                <li><strong>Volume:</strong> ${appState.loadedDataset ? appState.loadedDataset.rows.length : 12} linhas e ${appState.loadedDataset ? appState.loadedDataset.headers.length : 6} colunas.</li>
-                <li><strong>Venda Média Diária:</strong> 18.875 USD.</li>
-                <li><strong>Melhor Região:</strong> East (Leste), acumulando cerca de 30% mais faturamento relativo ao investimento de anúncios.</li>
-            </ul>
-            <p>Acesse as abas ao lado para navegar no grid completo de dados e explorar os gráficos gerados.</p>
-        `;
-    }
-
-    return `
-        <p>Análise concluída com sucesso para o comando: <em>"${escapeHtml(promptText)}"</em>.</p>
-        <p>Configurei os resultados no Workspace de Dados à direita:</p>
-        <ul>
-            <li><strong>Visualização de Dados:</strong> Tabela atualizada com a base de dados ativa.</li>
-            <li><strong>Gráficos:</strong> Gráfico gerado dinamicamente com base nas colunas numéricas disponíveis.</li>
-            <li><strong>Código Python:</strong> Script estruturado usando Pandas e Scikit-Learn para modelagem correspondente.</li>
-        </ul>
-        <p>Como quer complementar essa análise? Se quiser, você pode pedir para construir um modelo de previsão!</p>
-    `;
-}
+// getSimulatedTextResponse removed — real answers now come from Azure OpenAI gpt-4.1
 
 // Helper to load sample data without chat spam (used internally if user prompts without dataset)
 function loadSampleSilent() {
@@ -1008,24 +1042,29 @@ function generateCleanScatterMock() {
 // ----------------------------------------------------
 function setupChatActions() {
     elements.btnNewChat.addEventListener('click', () => {
+        // Reset conversation history for a fresh context
+        appState.conversationHistory = [];
         unloadDataset();
         elements.messagesContainer.innerHTML = `
             <div class="message-wrapper assistant">
                 <div class="msg-avatar">DS</div>
                 <div class="message-bubble">
-                    <p>Novo espaço de conversa iniciado. Como eu, seu <strong>Data Scientist</strong>, posso ajudar você agora?</p>
+                    <p>Novo espaço de conversa iniciado. Como eu, seu <strong>Data Scientist</strong> (powered by Azure OpenAI <strong>gpt-4.1</strong>), posso ajudar você agora?</p>
                     <p>Anexe novos datasets ou comece a formular perguntas de análise.</p>
                 </div>
             </div>
         `;
+        document.body.classList.remove('show-workspace');
     });
 
     elements.btnClearChat.addEventListener('click', () => {
+        // Also reset conversation history
+        appState.conversationHistory = [];
         elements.messagesContainer.innerHTML = `
             <div class="message-wrapper assistant">
                 <div class="msg-avatar">DS</div>
                 <div class="message-bubble">
-                    <p>O histórico de conversas deste chat foi redefinido.</p>
+                    <p>O histórico de conversas foi limpo. O contexto com o modelo foi reiniciado.</p>
                 </div>
             </div>
         `;
